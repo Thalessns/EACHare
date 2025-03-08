@@ -42,7 +42,7 @@ class PeerService:
             return
         target = self.get_peer(new_peer) 
         if not target:
-            print(f"Adicionando novo peer {new_peer} status {self.status.get(status)}")
+            Message.show_new_peer(new_peer, self.status.get(status))
             with open(self.peers_file_path, "a") as file:
                 file.write(new_peer+"\n")
                 file.close()
@@ -68,11 +68,11 @@ class PeerService:
             target_ip, target_port = self._split_address(target.address)
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client:
                 client.settimeout(5)
-                client.connect((target_ip, target_port))
                 self._increment_clock()
+                Message.show_sent_warning(message)
+                client.connect((target_ip, target_port))
                 client.send(message.content.encode("utf-8"))
                 response = client.recv(1024).decode("utf-8") 
-                print(message.warning)
                 client.close()
         except:
             self._set_peer_status(target, False)
@@ -95,21 +95,22 @@ class PeerService:
 
     def _handle_message(self, client: socket.socket) -> None:
         message = client.recv(1024).decode("utf-8")
-        print(f"""\nMensagem recebida: "{message.replace("\n", "")}" """)
+        Message.show_receive_warning(message)
         self._increment_clock()
         splitted_message = message.replace("\n", "").split(" ")
         sender = splitted_message[0]
-        message_type = splitted_message[-1]
+        message_type = splitted_message[-2]
         response_content = self.handle_type.get(message_type)(sender)
         if response_content:
-            response_message = Message.create_response(
+            self._increment_clock()
+            response_message = Message.create(
                 origin=self.address,
                 target=sender,
                 clock=self.clock,
                 type=response_content.get("type"),
                 args=response_content.get("args", "")
             )
-            print(response_message.warning)
+            Message.show_sent_warning(response_message)
             client.send(response_message.content.encode("utf-8"))
         client.close()
         self.insert_known_peer(sender)
@@ -137,12 +138,11 @@ class PeerService:
 
     def _increment_clock(self) -> None:
         self.clock += 1
-        print(f"=> Atualizando relogio para {self.clock}")
+        Message.show_clock_update(self.clock)
 
     def _set_peer_status(self, peer: Peer, status: bool) -> None:
-        if peer.status != self.status.get(status):
-            peer.status = self.status.get(status)
-            print(f"Atualizando peer {peer.address} status {self.status[status]}")
+        peer.status = self.status.get(status)
+        Message.show_status_update(peer.address, self.status.get(status))
 
     def _split_address(self, address: str) -> tuple:
         split = address.split(":")

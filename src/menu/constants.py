@@ -13,6 +13,8 @@ Escolha um comando:
 -> """
 
     LIST_PEERS="""
-    Lista de Peers:
+Lista de Peers:
         [0] Voltar para o menu anterior"""
 
+    LIST_FILES="""
+Arquivos locais:"""

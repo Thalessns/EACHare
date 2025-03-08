@@ -4,6 +4,7 @@ from os import listdir
 from src.peer.service import PeerService
 from src.peer.schemas import Peer
 from src.peer.message import Message
+from src.menu.constants import Constant
 
 class Command:
 
@@ -38,7 +39,7 @@ class Command:
             responses_content.append(response_content)
         responses = []
         for content in responses_content:
-            print(f"""Resposta recebida: "{content}" """)
+            Message.show_response_warning(content)
             self.peer._increment_clock()
             response_dict = self._get_reponse_dict(content)
             responses.append(response_dict)
@@ -51,7 +52,7 @@ class Command:
                 )  
 
     def list_local_files(self) -> None:
-        print("\nArquivos locais: ")
+        print(Constant.LIST_FILES)
         for file in listdir(self.peer.shared_directory):
             print(f"- {file}")
 
