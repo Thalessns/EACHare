@@ -1,10 +1,11 @@
-from typing import List, Tuple
+from typing import List
 from os import listdir
 
 from src.peer.service import PeerService
 from src.peer.schemas import Peer
 from src.peer.message import Message
 from src.menu.constants import Constant
+
 
 class Command:
 
