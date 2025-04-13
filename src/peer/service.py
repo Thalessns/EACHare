@@ -37,18 +37,22 @@ class PeerService:
             file.close()
         return known_peers
     
-    def insert_known_peer(self, new_peer: str, status: bool = True) -> None:
-        if new_peer == self.address:
-            return
+    def insert_known_peer(self, new_peer: str, status: bool = True, current_clock: int = 0) -> None:
         target = self.get_peer(new_peer) 
         if not target:
             Message.show_new_peer(new_peer, self.status.get(status))
             with open(self.peers_file_path, "a") as file:
                 file.write(new_peer+"\n")
                 file.close()
-            target = Peer(address=new_peer)
+            target = Peer(
+                address=new_peer, 
+                status=self.status.get(status), 
+                clock=current_clock
+            )
             self.known_peers.append(target)
-        target.status = self.status.get(status)
+        if current_clock > target.clock:
+            target.status = self.status.get(status)
+            target.clock = current_clock
 
     def start_server(self) -> None:
         # Separando string de endereço
@@ -96,10 +100,12 @@ class PeerService:
     def _handle_message(self, client: socket.socket) -> None:
         message = client.recv(1024).decode("utf-8")
         Message.show_receive_warning(message)
-        self._increment_clock()
         splitted_message = message.replace("\n", "").split(" ")
         sender = splitted_message[0]
-        message_type = splitted_message[-2]
+        sender_clock = int(splitted_message[1])
+        message_type = splitted_message[2]
+        self._set_max_clock_value(sender_clock)
+        self._increment_clock()
         response_content = self.handle_type.get(message_type)(sender)
         if response_content:
             self._increment_clock()
@@ -113,7 +119,10 @@ class PeerService:
             Message.show_sent_warning(response_message)
             client.send(response_message.content.encode("utf-8"))
         client.close()
-        self.insert_known_peer(sender)
+        self.insert_known_peer(
+            new_peer=sender,
+            current_clock=sender_clock
+        )
 
     def _handle_hello(self, *args) -> None:
         return None
@@ -126,7 +135,7 @@ class PeerService:
             if peer.address == sender:
                 peers_number -= 1
                 continue
-            response_args += f"{peer.address}:{peer.status}:0\n"
+            response_args += f"{peer.address}:{peer.status}:{peer.clock}\n"
         return {
             "type": "PEER_LIST",
             "args": f"{peers_number}"+response_args
@@ -135,6 +144,9 @@ class PeerService:
     def _handle_bye(self, sender: str) -> None:
         peer = self.get_peer(sender)
         self._set_peer_status(peer, False)
+
+    def _set_max_clock_value(self, sender_clock: int) -> None:
+        self.clock = max(self.clock, sender_clock)
 
     def _increment_clock(self) -> None:
         self.clock += 1

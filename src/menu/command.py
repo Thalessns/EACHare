@@ -30,7 +30,7 @@ class Command:
         for peer in peers_list:
             message = Message.create(
                 origin=self.peer.address,
-                clock=self.peer.clock,
+                clock=self.peer.clock + 1,
                 target=peer.address,
                 type="GET_PEERS"
             )
@@ -49,7 +49,8 @@ class Command:
             for peer in peer_list:
                 self.peer.insert_known_peer(
                     new_peer=peer.get("address"),
-                    status=peer.get("status")
+                    status=peer.get("status"),
+                    current_clock=peer.get("clock")
                 )  
 
     def list_local_files(self) -> None:
@@ -93,7 +94,7 @@ class Command:
                 {
                     "address": splited_arg[0]+":"+splited_arg[1],
                     "status": (True if splited_arg[2] == "ONLINE" else False),
-                    "number": splited_arg[3]
+                    "clock": splited_arg[3]
                 }
             )
         return result
