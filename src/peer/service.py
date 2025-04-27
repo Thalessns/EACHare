@@ -145,7 +145,7 @@ class PeerService:
     def _handle_hello(self, *args) -> None:
         return None
 
-    def _handle_get_peers(self, sender: str) -> Dict[str, str]:
+    def _handle_get_peers(self, sender: str, *args) -> Dict[str, str]:
         peers = self.known_peers
         peers_number = len(peers)
         args = f"{peers_number} "

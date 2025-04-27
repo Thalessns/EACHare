@@ -42,7 +42,7 @@ class MenuService:
             try:
                 print(Constant.LIST_PEERS)
                 for index, peer in enumerate(peers):
-                    print(f"        [{index + 1}] {peer.address} {peer.status}")
+                    print(f"        [{index + 1}] {peer.address} {peer.status} {peer.clock}")
                 choice = input("    -> ")
                 if not choice.isdigit() or int(choice) not in range(0, max_index):
                     raise ValueError
