@@ -34,7 +34,7 @@ class Command:
                 self.peer.insert_known_peer(
                     new_peer=peer.get("address"),
                     status=peer.get("status"),
-                    current_clock=peer.get("clock")
+                    current_clock=int(peer.get("clock"))
                 )  
 
     def list_local_files(self) -> None:
@@ -149,9 +149,11 @@ class Command:
             )
         return result
 
-    def _prepare_ls_response_args(self, args) -> List[SharedFile]:
+    def _prepare_ls_response_args(self, args) -> Union[List[SharedFile], List]:
         result = []
         for arg in args:
+            if arg == "":
+                break
             splitted_arg = arg.split(":")
             result.append(
                 SharedFile(
