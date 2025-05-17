@@ -1,3 +1,6 @@
+import base64
+import ast
+
 from typing import List, Dict
 
 from src.menu.command import Command
@@ -85,9 +88,11 @@ class MenuService:
                         owner=target["owner"][0],
                         file_name=target["name"]
                     )
+                    file_bytes = ast.literal_eval(response["args"][-1])
+                    file_content = base64.b64decode(file_bytes)
                     self.commands.save_shared_file(
                         file_name=target["name"],
-                        file_content=response["args"][-1]
+                        file_content=file_content
                     )
                 break
 

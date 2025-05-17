@@ -3,7 +3,8 @@ import threading
 import base64
 
 from os import listdir, stat
-from typing import Union, List, Dict
+from typing import Union, List, Dict, Tuple
+import binascii
 
 from src.peer.message import MessageData, Message
 from src.peer.schemas import Peer, SharedFile
@@ -80,7 +81,12 @@ class PeerService:
                 Message.show_sent_warning(message)
                 client.connect((target_ip, target_port))
                 client.send(message.content.encode("utf-8"))
-                response = client.recv(1024).decode("utf-8") 
+                response = ""
+                while True:
+                    chunk = client.recv(1024).decode("utf-8")
+                    if not chunk:
+                        break
+                    response += chunk
                 client.close()
         except:
             self._set_peer_status(target, False)
@@ -107,9 +113,18 @@ class PeerService:
 
     def save_shared_file(self, file_name: str, file_content: bytes) -> bool:
         with open(f"{self.shared_directory}/{file_name}", "wb") as new_file:
-            file_bytes = base64.b64decode(file_content)
-            new_file.write(file_bytes)
-            new_file.close()
+            try:
+                file_bytes = base64.b64decode(file_content)
+                new_file.write(file_bytes)
+                new_file.close()
+            except binascii.Error as error:
+                if "padding" not in f"{error}":
+                    print(error)
+                    return False
+                padding = len(file_content) % 4
+                if padding:
+                    file_content += b'=' * (4 - padding)
+                return self.save_shared_file(file_name, file_content)
         return True
 
     def _handle_message(self, client: socket.socket) -> None:
@@ -173,13 +188,12 @@ class PeerService:
         file_name = args[0][0]
         int_1 = args[0][1]
         int_2 = args[0][2]
-        encoded_file: bytes
         with open(
             f"{self.shared_directory}/{file_name}", "rb") as file:
             content = file.read()
-            encoded_file = base64.b64encode(content)
+            content_string = base64.b64encode(content).decode("utf-8")
             file.close()
-        args = f"{file_name} {int_1} {int_2} {encoded_file}"
+        args = f"{file_name} {int_1} {int_2} {content_string.encode()}"
         return {
             "type": "FILE",
             "args": args
@@ -200,7 +214,8 @@ class PeerService:
         peer.status = self.status.get(status)
         Message.show_status_update(peer.address, self.status.get(status))
 
-    def _split_address(self, address: str) -> tuple:
+    def _split_address(self, address: str) -> Tuple:
         split = address.split(":")
         return split[0], int(split[1])
+    
     

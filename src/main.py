@@ -8,7 +8,7 @@ from src.peer.service import PeerService
 if __name__ == "__main__":
     # Obtendo parâmetros
     address = sys.argv[1]
-    peers_file_path = (sys.argv[2])
+    peers_file_path = sys.argv[2]
     shared_directory = sys.argv[3]
 
     peer_service = PeerService(address, peers_file_path, shared_directory)
