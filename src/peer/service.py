@@ -1,10 +1,13 @@
 import socket
 import threading
+import base64
 
-from typing import List, Union
+from os import listdir, stat
+from typing import Union, List, Dict, Tuple
+import binascii
 
 from src.peer.message import MessageData, Message
-from src.peer.schemas import Peer
+from src.peer.schemas import Peer, SharedFile
 
 
 class PeerService:
@@ -17,12 +20,14 @@ class PeerService:
         self.handle_type = {
             "HELLO": self._handle_hello,
             "GET_PEERS": self._handle_get_peers,
+            "LS": self._handle_ls,
+            "DL": self._handle_dl,
             "BYE": self._handle_bye
         }
         self.clock = 0
         self.address = address
         self.peers_file_path = peers_file_path
-        self.shared_directory = shared_directory
+        self.shared_directory = shared_directory if shared_directory[-1] != "/" else shared_directory[:-1]
         self.known_peers = self.read_known_peers()
 
     def read_known_peers(self) -> List[Peer]:
@@ -37,18 +42,22 @@ class PeerService:
             file.close()
         return known_peers
     
-    def insert_known_peer(self, new_peer: str, status: bool = True) -> None:
-        if new_peer == self.address:
-            return
+    def insert_known_peer(self, new_peer: str, status: bool = True, current_clock: int = 0) -> None:
         target = self.get_peer(new_peer) 
         if not target:
             Message.show_new_peer(new_peer, self.status.get(status))
             with open(self.peers_file_path, "a") as file:
                 file.write(new_peer+"\n")
                 file.close()
-            target = Peer(address=new_peer)
+            target = Peer(
+                address=new_peer, 
+                status=self.status.get(status), 
+                clock=current_clock
+            )
             self.known_peers.append(target)
-        target.status = self.status.get(status)
+        if current_clock > target.clock:
+            target.status = self.status.get(status)
+            target.clock = current_clock
 
     def start_server(self) -> None:
         # Separando string de endereço
@@ -72,20 +81,19 @@ class PeerService:
                 Message.show_sent_warning(message)
                 client.connect((target_ip, target_port))
                 client.send(message.content.encode("utf-8"))
-                response = client.recv(1024).decode("utf-8") 
+                response = ""
+                while True:
+                    chunk = client.recv(1024).decode("utf-8")
+                    if not chunk:
+                        break
+                    response += chunk
                 client.close()
         except:
             self._set_peer_status(target, False)
             return None
         else:
-            self._set_peer_status(target, True)
+            if message.type != "BYE": self._set_peer_status(target, True)
             return response
-
-    def send_get_peers(self, target: Peer, message: MessageData) -> Union[str, None]:
-        response = self.send_message(target, message)
-        if not response:
-            return
-        return response
 
     def get_peer(self, address: str) -> Union[Peer, None]:
         for peer in self.known_peers:
@@ -93,14 +101,49 @@ class PeerService:
                 return peer
         return None
 
+    def list_files_stats(self) -> List[SharedFile]:
+        shared_files = []
+        for file in listdir(self.shared_directory):
+            file_bytes = stat(f"{self.shared_directory}/{file}").st_size
+            shared_files.append(SharedFile(
+                name=file,
+                bytes_size=file_bytes
+            ))
+        return shared_files
+
+    def save_shared_file(self, file_name: str, file_content: bytes) -> bool:
+        with open(f"{self.shared_directory}/{file_name}", "wb") as new_file:
+            try:
+                file_bytes = base64.b64decode(file_content)
+                new_file.write(file_bytes)
+                new_file.close()
+            except binascii.Error as error:
+                if "padding" not in f"{error}":
+                    print(error)
+                    return False
+                padding = len(file_content) % 4
+                if padding:
+                    file_content += b'=' * (4 - padding)
+                return self.save_shared_file(file_name, file_content)
+        return True
+
     def _handle_message(self, client: socket.socket) -> None:
         message = client.recv(1024).decode("utf-8")
         Message.show_receive_warning(message)
-        self._increment_clock()
         splitted_message = message.replace("\n", "").split(" ")
         sender = splitted_message[0]
-        message_type = splitted_message[-2]
-        response_content = self.handle_type.get(message_type)(sender)
+        sender_clock = int(splitted_message[1])
+        message_type = splitted_message[2]
+        args = None
+        if len(splitted_message) > 3:
+            args = splitted_message[3:]
+        self._set_max_clock_value(sender_clock)
+        self._increment_clock()
+        self.insert_known_peer(
+            new_peer=sender,
+            current_clock=sender_clock
+        )
+        response_content = self.handle_type.get(message_type)(sender, args)
         if response_content:
             self._increment_clock()
             response_message = Message.create(
@@ -113,28 +156,55 @@ class PeerService:
             Message.show_sent_warning(response_message)
             client.send(response_message.content.encode("utf-8"))
         client.close()
-        self.insert_known_peer(sender)
 
     def _handle_hello(self, *args) -> None:
         return None
 
-    def _handle_get_peers(self, sender: str) -> dict:
+    def _handle_get_peers(self, sender: str, *args) -> Dict[str, str]:
         peers = self.known_peers
         peers_number = len(peers)
-        response_args = f" "
+        args = f"{peers_number} "
         for peer in peers:
             if peer.address == sender:
                 peers_number -= 1
                 continue
-            response_args += f"{peer.address}:{peer.status}:0\n"
+            args += f"{peer.address}:{peer.status}:{peer.clock}\n"
         return {
             "type": "PEER_LIST",
-            "args": f"{peers_number}"+response_args
+            "args": args
+        }
+    
+    def _handle_ls(self, *args) -> Dict[str, str]:
+        files = self.list_files_stats()
+        args = f"{len(files)} "
+        for file in files:
+            args += f"{file.name}:{file.bytes_size}\n"
+        return {
+            "type": "LS_LIST",
+            "args": args
+        }
+    
+    def _handle_dl(self, sender: str, *args) -> Dict[str, any]:
+        file_name = args[0][0]
+        int_1 = args[0][1]
+        int_2 = args[0][2]
+        with open(
+            f"{self.shared_directory}/{file_name}", "rb") as file:
+            content = file.read()
+            content_string = base64.b64encode(content).decode("utf-8")
+            file.close()
+        args = f"{file_name} {int_1} {int_2} {content_string.encode()}"
+        return {
+            "type": "FILE",
+            "args": args
         }
 
-    def _handle_bye(self, sender: str) -> None:
+    def _handle_bye(self, sender: str, *args) -> None:
         peer = self.get_peer(sender)
         self._set_peer_status(peer, False)
+
+    def _set_max_clock_value(self, sender_clock: int) -> None:
+        self.clock = max(self.clock, sender_clock)
 
     def _increment_clock(self) -> None:
         self.clock += 1
@@ -144,7 +214,8 @@ class PeerService:
         peer.status = self.status.get(status)
         Message.show_status_update(peer.address, self.status.get(status))
 
-    def _split_address(self, address: str) -> tuple:
+    def _split_address(self, address: str) -> Tuple:
         split = address.split(":")
         return split[0], int(split[1])
+    
     

@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 @dataclass
 class MessageData:
+    type: str
     content: str
     warning: str
 
@@ -17,6 +18,7 @@ class Message:
     @staticmethod
     def create(origin: str, clock: int, type: str, target: str, args: str = "") -> MessageData:
         return MessageData(
+            type=type,
             content=f"{origin} {clock} {type} {args}\n",
             warning=f"""Encaminhando mensagem "{origin} {clock} {type}" para {target}"""
         )

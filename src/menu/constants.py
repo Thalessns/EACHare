@@ -18,3 +18,8 @@ Lista de Peers:
 
     LIST_FILES="""
 Arquivos locais:"""
+
+    LIST_FILES_LS=f"""
+Arquivos encontrados na rede:
+        {"Nome":^20} | {"Tamanho":^20} | {"Peer":^20}
+        {"[0] <Cancelar>":<20} | {"":^20} | {"":^20} """
