@@ -1,5 +1,6 @@
 import threading
 import ast
+import base64
 
 from concurrent.futures import ThreadPoolExecutor
 from typing import Union, List, Dict
@@ -70,19 +71,6 @@ class Command:
                     "owner": [response.get("sender")]
                 }
         return [files_mapping[key] for key in files_mapping.keys()]
-
-    """def send_dl(self, owner: str, file: SharedFile) -> Dict[str, any]:
-        owners = owner.split(", ") if ", " in owner else [owner]
-        total_chunks = file.bytes_size / self.peer.chunk
-
-        peer = self.peer.get_peer(owner)
-        response = self._get_peers_responses(
-            peers_list=[peer],
-            message_type=MessageType.DL,
-            args=f"{file.name} {self.peer.chunk} 0",
-            response_data_separation="blankspace"
-        )
-        return response[0]"""
     
     def send_dl(self, owners: Union[str, List[str]], file: SharedFile) -> Dict[str, any]:
         peers = [self.peer.get_peer(owner) for owner in owners]
@@ -102,20 +90,15 @@ class Command:
         lock = threading.Lock()
         
         def download_chunks(peer, start_chunk, end_chunk):
-            for chunk_index in range(start_chunk, end_chunk):
-                # Calcula o tamanho real do chunk (último pode ser menor)
-                start_byte = chunk_index * chunk_size
-                end_byte = min(start_byte + chunk_size, file_size)
-                actual_chunk_size = end_byte - start_byte  # Tamanho real
-                
-                args = f"{file.name} {actual_chunk_size} {chunk_index}"
+            for chunk_index in range(start_chunk, end_chunk):                
+                args = f"{file.name} {chunk_size} {chunk_index}"
                 response = self._get_peers_responses(
                     peers_list=[peer],
                     message_type=MessageType.DL,
                     args=args,
                     response_data_separation="blankspace"
                 )
-                
+
                 with lock:
                     responses[str(chunk_index)] = response[0] if response else None
         
@@ -167,16 +150,10 @@ class Command:
         chunks_content = b""
 
         for index, response in sorted_responses.items():
-            file_bytes = ast.literal_eval(response["args"][-1])
+            file_bytes = base64.b64decode(response["args"][-1])
             chunks_content += file_bytes
 
-        # Organizando chunks divididos por b'='
-        splitted_chunks = chunks_content.split(b'=')
-        joined_chunks = b''.join(splitted_chunks)
-        padding = (4 - (len(joined_chunks) % 4)) % 4
-        final_content = joined_chunks + b'=' * padding
-
-        return final_content
+        return chunks_content
 
     def save_shared_file(self, file_name: str, file_content: bytes) -> None:
         status = self.peer.save_shared_file(

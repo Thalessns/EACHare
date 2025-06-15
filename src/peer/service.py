@@ -56,6 +56,7 @@ class PeerService:
                 clock=current_clock
             )
             self.known_peers.append(target)
+            return
         if current_clock > target.clock:
             target.status = self.status.get(status)
             target.clock = current_clock
@@ -110,6 +111,7 @@ class PeerService:
     def save_shared_file(self, file_name: str, file_content: bytes) -> bool:
         with open(f"{self.shared_directory}/{file_name}", "wb") as new_file:
             try:
+                #decoded = base64.b64decode(file_content)
                 new_file.write(file_content)
                 new_file.close()
             except binascii.Error as error:
@@ -196,14 +198,19 @@ class PeerService:
         chunk_size = int(args[0][1])
         chunk_index = int(args[0][2])
 
+        file_path = f"{self.shared_directory}/{file_name}"
+        file_size = path.getsize(file_path)
+
         start_pos = chunk_index * chunk_size
         end_pos = start_pos + chunk_size
 
+        if start_pos > file_size:
+            aux = (chunk_index - 1) * chunk_size
+            start_pos = file_size - aux
+            end_pos = file_size
+
         if start_pos >= end_pos:
             return None
-
-        file_path = f"{self.shared_directory}/{file_name}"
-        file_size = path.getsize(file_path)
 
         with open(file_path, "rb") as file:
             file.seek(start_pos)
@@ -211,7 +218,7 @@ class PeerService:
             content_string = base64.b64encode(content).decode("utf-8")
             file.close()
 
-        args = f"{file_name} {chunk_size} {chunk_index} {content_string.encode()}"
+        args = f"{file_name} {chunk_size} {chunk_index} {content_string}"
         return {
             "type": "FILE",
             "args": args
@@ -235,5 +242,3 @@ class PeerService:
     def _split_address(self, address: str) -> Tuple:
         split = address.split(":")
         return split[0], int(split[1])
-    
-    
