@@ -1,16 +1,15 @@
 import threading
-import base64
 import ast
 
 from concurrent.futures import ThreadPoolExecutor
 from typing import Union, List, Dict
 from time import time
-from math import ceil
 
 from src.peer.service import PeerService
 from src.peer.schemas import Peer, SharedFile, MessageType
 from src.peer.message import Message, MessageData
 from src.menu.constants import Constant
+from src.stats.service import manage_stats
 
 
 class Command:
@@ -121,9 +120,11 @@ class Command:
                     responses[str(chunk_index)] = response[0] if response else None
         
         # Cria e inicia as threads para cada peer
-        threads = []
         chunk_start = 0
         
+        # Inicializando contador de tempo
+        start_time = time()
+
         with ThreadPoolExecutor(max_workers=len(peers)) as executor:
             futures = []
             for i, peer in enumerate(peers):
@@ -147,6 +148,16 @@ class Command:
             for future in futures:
                 future.result()
         
+        # Finaliza a contagem de tempo
+        total_time = time() - start_time
+        # Salvando estatísticas de tempo
+        manage_stats.save(
+            chunk_size=chunk_size,
+            num_peers=len(peers),
+            file_size=file_size,
+            total_time=total_time
+        )
+
         # Ordena as respostas pelos índices dos chunks
         sorted_responses = {
             k: responses[k] 
@@ -174,6 +185,9 @@ class Command:
         )
         if status:
             print(f"Download do arquivo {file_name} finalizado.")
+
+    def run_st(self) -> list:
+        return manage_stats.get_data()
 
     def change_chunk_size(self, new_value: int) -> None:
         self.peer.change_chunk_size(new_value)

@@ -12,7 +12,7 @@ class MenuService:
             2: self._get_peers,
             3: self._list_local_files,
             4: self._ls,
-            5: None,
+            5: self._st,
             6: self._change_chunk_size,
             9: self._exit
         }
@@ -98,6 +98,12 @@ class MenuService:
                         file_content=file_content
                     )
                 break
+
+    def _st(self) -> None:
+        stats_list = self.commands.run_st()
+        print("Tam. chunk | N peers | Tam. arquivo | N | Tempo [s] | Desvio")
+        for stat in stats_list:
+            print(f"{stat.chunk_size:^11}|{stat.num_peers:^9}|{stat.file_size:^14}|{'-':^3}|{stat.time:^11.5f}|{'-':^7}")
 
     def _change_chunk_size(self) -> None:
         try:
