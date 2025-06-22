@@ -89,8 +89,15 @@ class Command:
         responses = {}
         lock = threading.Lock()
         
-        def download_chunks(peer, start_chunk, end_chunk):
-            for chunk_index in range(start_chunk, end_chunk):                
+        chunk_times = {}
+
+        def download_chunks(
+            peer: Peer,  
+            start_chunk: int, 
+            end_chunk: int
+        ):
+            for chunk_index in range(start_chunk, end_chunk):
+                chunk_start_time = time()
                 args = f"{file.name} {chunk_size} {chunk_index}"
                 response = self._get_peers_responses(
                     peers_list=[peer],
@@ -101,7 +108,10 @@ class Command:
 
                 with lock:
                     responses[str(chunk_index)] = response[0] if response else None
-        
+
+                chunk_end_time = time() - chunk_start_time
+                chunk_times[chunk_index] = chunk_end_time
+
         # Cria e inicia as threads para cada peer
         chunk_start = 0
         
@@ -115,6 +125,9 @@ class Command:
                 chunks_this_peer = chunks_per_peer + (1 if i < remaining_chunks else 0)
                 chunk_end = chunk_start + chunks_this_peer
                 
+                # Iniciando temporizador do chunk
+                chunk_start_time = time()
+
                 # Submete a tarefa ao executor
                 futures.append(
                     executor.submit(
@@ -124,18 +137,20 @@ class Command:
                         chunk_end
                     )
                 )
-                
+
                 chunk_start = chunk_end
             
             # Espera todas as threads completarem
             for future in futures:
                 future.result()
-        
+
         # Finaliza a contagem de tempo
         total_time = time() - start_time
         # Salvando estatísticas de tempo
         manage_stats.save(
             chunk_size=chunk_size,
+            chunk_times=chunk_times.values(),
+            num_chunks=total_chunks,
             num_peers=len(peers),
             file_size=file_size,
             total_time=total_time
