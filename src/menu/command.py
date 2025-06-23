@@ -114,9 +114,6 @@ class Command:
 
         # Cria e inicia as threads para cada peer
         chunk_start = 0
-        
-        # Inicializando contador de tempo
-        start_time = time()
 
         with ThreadPoolExecutor(max_workers=len(peers)) as executor:
             futures = []
@@ -144,16 +141,21 @@ class Command:
             for future in futures:
                 future.result()
 
-        # Finaliza a contagem de tempo
-        total_time = time() - start_time
+        # Obtendo dados realcionandos ao tempo de download
+        download_time = 0
+        list_chunk_times = []
+        for chunk_time in chunk_times.values():
+            download_time += chunk_time
+            list_chunk_times.append(chunk_time)
+
         # Salvando estatísticas de tempo
         manage_stats.save(
             chunk_size=chunk_size,
-            chunk_times=chunk_times.values(),
+            chunk_times=list_chunk_times,
             num_chunks=total_chunks,
             num_peers=len(peers),
             file_size=file_size,
-            total_time=total_time
+            total_time=download_time
         )
 
         # Ordena as respostas pelos índices dos chunks
