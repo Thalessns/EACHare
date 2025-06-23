@@ -103,7 +103,7 @@ class MenuService:
         stats_list = self.commands.run_st()
         print("Tam. chunk | N peers | Tam. arquivo | N | Tempo [s] | Desvio")
         for stat in stats_list:
-            print(f"{stat.chunk_size:^11}|{stat.num_peers:^9}|{stat.file_size:^14}|{stat.num_chunks:^3}|{stat.total_time:^11.5f}| {stat.deviation:^7}")
+            print(f"{stat.chunk_size:^11}|{stat.num_peers:^9}|{stat.file_size:^14}|{stat.num_chunks:^3}|{stat.total_time:^11.5f}| {stat.deviation:^7.5f}")
 
     def _change_chunk_size(self) -> None:
         try:
