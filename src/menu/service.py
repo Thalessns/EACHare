@@ -1,11 +1,6 @@
-import base64
-import ast
-
-from typing import List, Dict
-
 from src.menu.command import Command
 from src.menu.constants import Constant
-from src.peer.service import PeerService
+from src.peer.service import PeerService, SharedFile
 
 
 class MenuService:
@@ -17,8 +12,8 @@ class MenuService:
             2: self._get_peers,
             3: self._list_local_files,
             4: self._ls,
-            5: None,
-            6: None,
+            5: self._st,
+            6: self._change_chunk_size,
             9: self._exit
         }
 
@@ -72,7 +67,14 @@ class MenuService:
             try:
                 print(Constant.LIST_FILES_LS)
                 for index, file in enumerate(files):
-                    print(f"        [{index+1}] {file['name']:<16} | {file['bytes_size']:^20} | {file['owner'][0]:^20}")
+                    file_owners = ""
+                    if len(file["owner"]) > 1:
+                        for owner in file['owner']:
+                            file_owners += f"{owner}, "
+                        file_owners = file_owners[0:-2]
+                    else:
+                        file_owners = file["owner"][0]
+                    print(f"        [{index+1}] {file['name']:<16} | {file['bytes_size']:^20} | {file_owners:<20}")
                 choice = input("-> ")
                 if not choice.isdigit():
                     raise ValueError
@@ -84,20 +86,38 @@ class MenuService:
             else:
                 if choice != 0:
                     target = files[choice-1]
-                    response = self.commands.send_dl(
-                        owner=target["owner"][0],
-                        file_name=target["name"]
+                    file_content = self.commands.send_dl(
+                        owners=target["owner"],
+                        file=SharedFile(
+                            name=target["name"],
+                            bytes_size=target["bytes_size"]
+                        )
                     )
-                    file_bytes = ast.literal_eval(response["args"][-1])
-                    file_content = base64.b64decode(file_bytes)
                     self.commands.save_shared_file(
                         file_name=target["name"],
                         file_content=file_content
                     )
                 break
 
-    def _ls_menu(self, files: List) -> int:
-        print(Constant.LIST_FILES_LS)
+    def _st(self) -> None:
+        stats_list = self.commands.run_st()
+        print("Tam. chunk | N peers | Tam. arquivo | N | Tempo [s] | Desvio")
+        for stat in stats_list:
+            print(f"{stat.chunk_size:^11}|{stat.num_peers:^9}|{stat.file_size:^14}|{stat.num_chunks:^3}|{stat.total_time:^11.5f}| {stat.deviation:^7.5f}")
+
+    def _change_chunk_size(self) -> None:
+        try:
+            print("Digite novo tamanho de chunk:")
+            new_value = input("> ")
+            if not new_value.isdigit():
+                raise ValueError
+        except ValueError:    
+                print(f"O valor '{new_value}' não é uma opção válida!")
+        except Exception as error:
+            print(f"Erro: {error}")
+        else:
+            self.commands.change_chunk_size(int(new_value))
+            print(f"        Tamanho de chunk alterado: {new_value}")
 
     def _exit(self) -> bool:
         try:

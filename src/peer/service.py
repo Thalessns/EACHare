@@ -2,7 +2,7 @@ import socket
 import threading
 import base64
 
-from os import listdir, stat
+from os import listdir, stat, path
 from typing import Union, List, Dict, Tuple
 import binascii
 
@@ -24,11 +24,12 @@ class PeerService:
             "DL": self._handle_dl,
             "BYE": self._handle_bye
         }
-        self.clock = 0
-        self.address = address
-        self.peers_file_path = peers_file_path
-        self.shared_directory = shared_directory if shared_directory[-1] != "/" else shared_directory[:-1]
-        self.known_peers = self.read_known_peers()
+        self.clock: int = 0
+        self.address: str = address
+        self.chunk: int = 256
+        self.peers_file_path: str = peers_file_path
+        self.shared_directory: str = shared_directory if shared_directory[-1] != "/" else shared_directory[:-1]
+        self.known_peers: List[Peer] = self.read_known_peers()
 
     def read_known_peers(self) -> List[Peer]:
         known_peers = []
@@ -55,6 +56,7 @@ class PeerService:
                 clock=current_clock
             )
             self.known_peers.append(target)
+            return
         if current_clock > target.clock:
             target.status = self.status.get(status)
             target.clock = current_clock
@@ -81,12 +83,7 @@ class PeerService:
                 Message.show_sent_warning(message)
                 client.connect((target_ip, target_port))
                 client.send(message.content.encode("utf-8"))
-                response = ""
-                while True:
-                    chunk = client.recv(1024).decode("utf-8")
-                    if not chunk:
-                        break
-                    response += chunk
+                response = self._get_message_chunks(client)
                 client.close()
         except:
             self._set_peer_status(target, False)
@@ -114,8 +111,8 @@ class PeerService:
     def save_shared_file(self, file_name: str, file_content: bytes) -> bool:
         with open(f"{self.shared_directory}/{file_name}", "wb") as new_file:
             try:
-                file_bytes = base64.b64decode(file_content)
-                new_file.write(file_bytes)
+                #decoded = base64.b64decode(file_content)
+                new_file.write(file_content)
                 new_file.close()
             except binascii.Error as error:
                 if "padding" not in f"{error}":
@@ -126,9 +123,21 @@ class PeerService:
                     file_content += b'=' * (4 - padding)
                 return self.save_shared_file(file_name, file_content)
         return True
+    
+    def change_chunk_size(self, new_value: int) -> None:
+        self.chunk = new_value
+
+    def _get_message_chunks(self, client: socket.socket) -> str:
+        response = ""
+        while True:
+            chunk = client.recv(self.chunk).decode("utf-8")
+            if not chunk:
+                break
+            response += chunk
+        return response
 
     def _handle_message(self, client: socket.socket) -> None:
-        message = client.recv(1024).decode("utf-8")
+        message = client.recv(self.chunk).decode("utf-8")
         Message.show_receive_warning(message)
         splitted_message = message.replace("\n", "").split(" ")
         sender = splitted_message[0]
@@ -184,16 +193,32 @@ class PeerService:
             "args": args
         }
     
-    def _handle_dl(self, sender: str, *args) -> Dict[str, any]:
+    def _handle_dl(self, sender: str, *args) -> Union[Dict[str, any], None]:
         file_name = args[0][0]
-        int_1 = args[0][1]
-        int_2 = args[0][2]
-        with open(
-            f"{self.shared_directory}/{file_name}", "rb") as file:
-            content = file.read()
+        chunk_size = int(args[0][1])
+        chunk_index = int(args[0][2])
+
+        file_path = f"{self.shared_directory}/{file_name}"
+        file_size = path.getsize(file_path)
+
+        start_pos = chunk_index * chunk_size
+        end_pos = start_pos + chunk_size
+
+        if start_pos > file_size:
+            aux = (chunk_index - 1) * chunk_size
+            start_pos = file_size - aux
+            end_pos = file_size
+
+        if start_pos >= end_pos:
+            return None
+
+        with open(file_path, "rb") as file:
+            file.seek(start_pos)
+            content = file.read(min(chunk_size, file_size - start_pos))
             content_string = base64.b64encode(content).decode("utf-8")
             file.close()
-        args = f"{file_name} {int_1} {int_2} {content_string.encode()}"
+
+        args = f"{file_name} {chunk_size} {chunk_index} {content_string}"
         return {
             "type": "FILE",
             "args": args
@@ -217,5 +242,3 @@ class PeerService:
     def _split_address(self, address: str) -> Tuple:
         split = address.split(":")
         return split[0], int(split[1])
-    
-    

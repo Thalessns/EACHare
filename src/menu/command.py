@@ -1,9 +1,16 @@
+import threading
+import ast
+import base64
+
+from concurrent.futures import ThreadPoolExecutor
 from typing import Union, List, Dict
+from time import time
 
 from src.peer.service import PeerService
 from src.peer.schemas import Peer, SharedFile, MessageType
 from src.peer.message import Message, MessageData
 from src.menu.constants import Constant
+from src.stats.service import manage_stats
 
 
 class Command:
@@ -64,16 +71,106 @@ class Command:
                     "owner": [response.get("sender")]
                 }
         return [files_mapping[key] for key in files_mapping.keys()]
+    
+    def send_dl(self, owners: Union[str, List[str]], file: SharedFile) -> Dict[str, any]:
+        peers = [self.peer.get_peer(owner) for owner in owners]
 
-    def send_dl(self, owner: str, file_name: str) -> Dict[str, any]:
-        peer = self.peer.get_peer(owner)
-        response = self._get_peers_responses(
-            peers_list=[peer],
-            message_type=MessageType.DL,
-            args=f"{file_name} 0 0",
-            response_data_separation="blankspace"
+        chunk_size = int(self.peer.chunk)
+        file_size = int(file.bytes_size)
+        
+        # Calcula quantos chunks o arquivo possui
+        total_chunks = (file_size + chunk_size - 1) // chunk_size
+        
+        # Divide os chunks entre os peers disponíveis
+        chunks_per_peer = total_chunks // len(peers)
+        remaining_chunks = total_chunks % len(peers)
+        
+        # Dicionário para armazenar as respostas
+        responses = {}
+        lock = threading.Lock()
+        
+        chunk_times = {}
+
+        def download_chunks(
+            peer: Peer,  
+            start_chunk: int, 
+            end_chunk: int
+        ):
+            for chunk_index in range(start_chunk, end_chunk):
+                chunk_start_time = time()
+                args = f"{file.name} {chunk_size} {chunk_index}"
+                response = self._get_peers_responses(
+                    peers_list=[peer],
+                    message_type=MessageType.DL,
+                    args=args,
+                    response_data_separation="blankspace"
+                )
+
+                with lock:
+                    responses[str(chunk_index)] = response[0] if response else None
+
+                chunk_end_time = time() - chunk_start_time
+                chunk_times[chunk_index] = chunk_end_time
+
+        # Cria e inicia as threads para cada peer
+        chunk_start = 0
+
+        with ThreadPoolExecutor(max_workers=len(peers)) as executor:
+            futures = []
+            for i, peer in enumerate(peers):
+                # Calcula quantos chunks este peer vai processar
+                chunks_this_peer = chunks_per_peer + (1 if i < remaining_chunks else 0)
+                chunk_end = chunk_start + chunks_this_peer
+                
+                # Iniciando temporizador do chunk
+                chunk_start_time = time()
+
+                # Submete a tarefa ao executor
+                futures.append(
+                    executor.submit(
+                        download_chunks,
+                        peer,
+                        chunk_start,
+                        chunk_end
+                    )
+                )
+
+                chunk_start = chunk_end
+            
+            # Espera todas as threads completarem
+            for future in futures:
+                future.result()
+
+        # Obtendo dados realcionandos ao tempo de download
+        download_time = 0
+        list_chunk_times = []
+        for chunk_time in chunk_times.values():
+            download_time += chunk_time
+            list_chunk_times.append(chunk_time)
+
+        # Salvando estatísticas de tempo
+        manage_stats.save(
+            chunk_size=chunk_size,
+            chunk_times=list_chunk_times,
+            num_chunks=total_chunks,
+            num_peers=len(peers),
+            file_size=file_size,
+            total_time=download_time
         )
-        return response[0]
+
+        # Ordena as respostas pelos índices dos chunks
+        sorted_responses = {
+            k: responses[k] 
+            for k in sorted(responses.keys(), key=lambda x: int(x))
+        }
+        
+        chunks_content = b""
+
+        for index, response in sorted_responses.items():
+            file_bytes = base64.b64decode(response["args"][-1])
+            chunks_content += file_bytes
+
+        return chunks_content
 
     def save_shared_file(self, file_name: str, file_content: bytes) -> None:
         status = self.peer.save_shared_file(
@@ -82,6 +179,12 @@ class Command:
         )
         if status:
             print(f"Download do arquivo {file_name} finalizado.")
+
+    def run_st(self) -> list:
+        return manage_stats.get_data()
+
+    def change_chunk_size(self, new_value: int) -> None:
+        self.peer.change_chunk_size(new_value)
 
     def send_bye(self) -> None:
         online_peers = []
@@ -140,6 +243,7 @@ class Command:
         result = []
         for arg in args:
             splited_arg = arg.split(":")
+            if len(splited_arg) < 2: continue
             result.append(
                 {
                     "address": splited_arg[0]+":"+splited_arg[1],
