@@ -9,4 +9,4 @@
 **Diretório compartilhado:** ./shared <br>
 
 Dessa forma, o comando de execução será o seguinte: <br>
-**eachare 127.0.0.1:6001 ./vizinhos1.txt  ./shared**
+**eachare 127.0.0.1:6001 ./vizinhos1.txt  ./shared1**
