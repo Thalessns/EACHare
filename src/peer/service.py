@@ -1,3 +1,5 @@
+"""Serviço principal do peer-to-peer."""
+
 import socket
 import threading
 import base64
@@ -11,8 +13,16 @@ from src.peer.schemas import Peer, SharedFile
 
 
 class PeerService:
+    """Classe para representar o serviço principal do peer-to-peer."""
 
     def __init__(self, address: str, peers_file_path: str, shared_directory: str) -> None:
+        """Inicializa o serviço do peer.
+        
+        Args:
+            address (str): Endereco do peer.
+            peers_file_path (str): Caminho do arquivo de peers conhecidos.
+            shared_directory (str): Caminho do diretorio de arquivos compartilhados.
+        """
         self.status = {
         True: "ONLINE",
         False: "OFFLINE"
@@ -32,6 +42,11 @@ class PeerService:
         self.known_peers: List[Peer] = self.read_known_peers()
 
     def read_known_peers(self) -> List[Peer]:
+        """Lê o arquivo de peers conhecidos.
+        
+        Returns:
+            List[Peer]: Lista de peers conhecidos.
+        """
         known_peers = []
         with open(self.peers_file_path, "r") as file:
             peers = file.readlines()
@@ -44,6 +59,13 @@ class PeerService:
         return known_peers
     
     def insert_known_peer(self, new_peer: str, status: bool = True, current_clock: int = 0) -> None:
+        """Insere um novo peer na lista de peers conhecidos.
+
+        Args:
+            new_peer (str): Endereco do novo peer.
+            status (bool, optional): Status do novo peer. Padrao eh True (ONLINE).
+            current_clock (int, optional): Valor do relogio logico do novo peer. Padrao eh 0.
+        """
         target = self.get_peer(new_peer) 
         if not target:
             Message.show_new_peer(new_peer, self.status.get(status))
@@ -62,6 +84,7 @@ class PeerService:
             target.clock = current_clock
 
     def start_server(self) -> None:
+        """Inicia o servidor do peer."""
         # Separando string de endereço
         ip, port = self._split_address(self.address)
         # Inicializando servidor
@@ -75,6 +98,12 @@ class PeerService:
             handling.start()
 
     def send_message(self, target: Peer, message: MessageData) -> Union[str, None]:
+        """Envia uma mensagem para um peer conhecido.
+        
+        Args:
+            target (Peer): Peer que ira receber a mensagem.
+            message (MessageData): Mensagem a ser enviada.
+        """
         try:
             target_ip, target_port = self._split_address(target.address)
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client:
@@ -93,12 +122,22 @@ class PeerService:
             return response
 
     def get_peer(self, address: str) -> Union[Peer, None]:
+        """Retorna um peer conhecido a partir do endereço.
+        
+        Args:
+            address (str): Endereco do peer.
+        """
         for peer in self.known_peers:
             if address == peer.address:
                 return peer
         return None
 
     def list_files_stats(self) -> List[SharedFile]:
+        """Lista os arquivos compartilhados no diretório.
+        
+        Returns:
+            List[SharedFile]: Lista de arquivos compartilhados.
+        """
         shared_files = []
         for file in listdir(self.shared_directory):
             file_bytes = stat(f"{self.shared_directory}/{file}").st_size
@@ -109,6 +148,15 @@ class PeerService:
         return shared_files
 
     def save_shared_file(self, file_name: str, file_content: bytes) -> bool:
+        """Salva um arquivo compartilhado no diretório.
+
+        Args:
+            file_name (str): Nome do arquivo.
+            file_content (bytes): Conteudo do arquivo em bytes.
+
+        Returns:
+            bool: True se o arquivo foi salvo com sucesso, False caso contrário.
+        """
         with open(f"{self.shared_directory}/{file_name}", "wb") as new_file:
             try:
                 #decoded = base64.b64decode(file_content)
@@ -125,9 +173,22 @@ class PeerService:
         return True
     
     def change_chunk_size(self, new_value: int) -> None:
+        """Altera o tamanho do chunk para envio e recebimento de mensagens.
+        
+        Args:
+            new_value (int): Novo tamanho do chunk.
+        """
         self.chunk = new_value
 
     def _get_message_chunks(self, client: socket.socket) -> str:
+        """Recebe uma mensagem em chunks.
+        
+        Args:
+            client (socket.socket): Socket do cliente.
+
+        Returns:
+            str: Mensagem recebida.
+        """
         response = ""
         while True:
             chunk = client.recv(self.chunk).decode("utf-8")
@@ -137,6 +198,11 @@ class PeerService:
         return response
 
     def _handle_message(self, client: socket.socket) -> None:
+        """Manipula uma mensagem recebida.
+        
+        Args:
+            client (socket.socket): Socket do cliente.
+        """
         message = client.recv(self.chunk).decode("utf-8")
         Message.show_receive_warning(message)
         splitted_message = message.replace("\n", "").split(" ")
@@ -167,9 +233,20 @@ class PeerService:
         client.close()
 
     def _handle_hello(self, *args) -> None:
+        """Manipula a mensagem de saudação.
+
+        Args:
+            args: Argumentos da mensagem (não utilizados).
+        """
         return None
 
     def _handle_get_peers(self, sender: str, *args) -> Dict[str, str]:
+        """Manipula a mensagem de requisição de peers.
+        
+        Args:
+            sender (str): Endereco do peer que enviou a mensagem.
+            args: Argumentos da mensagem (não utilizados).
+        """
         peers = self.known_peers
         peers_number = len(peers)
         args = f"{peers_number} "
@@ -184,6 +261,11 @@ class PeerService:
         }
     
     def _handle_ls(self, *args) -> Dict[str, str]:
+        """Manipula a mensagem de listagem de arquivos.
+        
+        Args:
+            args: Argumentos da mensagem (não utilizados).
+        """
         files = self.list_files_stats()
         args = f"{len(files)} "
         for file in files:
@@ -194,6 +276,12 @@ class PeerService:
         }
     
     def _handle_dl(self, sender: str, *args) -> Union[Dict[str, any], None]:
+        """Manipula a mensagem de download de arquivo.
+        
+        Args:
+            sender (str): Endereco do peer que enviou a mensagem.
+            args: Argumentos da mensagem (nome do arquivo, tamanho do chunk, indice do chunk).
+        """
         file_name = args[0][0]
         chunk_size = int(args[0][1])
         chunk_index = int(args[0][2])
@@ -225,20 +313,46 @@ class PeerService:
         }
 
     def _handle_bye(self, sender: str, *args) -> None:
+        """Manipula a mensagem de despedida.
+
+        Args:
+            sender (str): Endereco do peer que enviou a mensagem.
+            args: Argumentos da mensagem (não utilizados).
+        """
         peer = self.get_peer(sender)
         self._set_peer_status(peer, False)
 
     def _set_max_clock_value(self, sender_clock: int) -> None:
+        """Define o valor máximo do relógio lógico.
+        
+        Args:
+            sender_clock (int): Valor do relógio lógico do peer que enviou a mensagem.
+        """
         self.clock = max(self.clock, sender_clock)
 
     def _increment_clock(self) -> None:
+        """Incrementa o valor do relógio lógico."""
         self.clock += 1
         Message.show_clock_update(self.clock)
 
     def _set_peer_status(self, peer: Peer, status: bool) -> None:
+        """Define o status de um peer conhecido.
+
+        Args:
+            peer (Peer): Peer conhecido.
+            status (bool): Novo status do peer.
+        """
         peer.status = self.status.get(status)
         Message.show_status_update(peer.address, self.status.get(status))
 
     def _split_address(self, address: str) -> Tuple:
+        """Separa o endereço em IP e porta.
+
+        Args:
+            address (str): Endereco do peer.
+
+        Returns:
+            Tuple: Tupla com o IP e a porta.
+        """
         split = address.split(":")
         return split[0], int(split[1])

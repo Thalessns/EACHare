@@ -1,11 +1,18 @@
+"""Serviço de menu para interação com o usuário."""
 from src.menu.command import Command
 from src.menu.constants import Constant
 from src.peer.service import PeerService, SharedFile
 
 
 class MenuService:
+    """Classe para gerenciar o menu de interação com o usuário."""
 
     def __init__(self, peer: PeerService) -> None:
+        """Inicializa o MenuService com o PeerService fornecido.
+        
+        Args:
+            peer (PeerService): Instância do PeerService para interagir.
+        """
         self.commands = Command(peer)
         self.options = {
             1: self._list_peers,
@@ -18,6 +25,7 @@ class MenuService:
         }
 
     def main_menu(self):
+        """Exibe o menu principal e gerencia a interação com o usuário."""
         exit = False
         while not exit:
             try:
@@ -33,6 +41,7 @@ class MenuService:
                 exit = self.options.get(choice)()
 
     def _list_peers(self) -> None:
+        """Lista os peers conhecidos e permite enviar mensagens HELLO."""
         peers = self.commands.list_peers()
         max_index = len(peers) + 1
         choice = -1
@@ -55,12 +64,15 @@ class MenuService:
                 peers = self.commands.list_peers()
 
     def _get_peers(self) -> None:
+        """Obtém a lista de peers online na rede."""
         self.commands.send_get_peers()
 
     def _list_local_files(self) -> None:
+        """Lista os arquivos locais compartilhados pelo peer."""
         self.commands.list_local_files()
 
     def _ls(self) -> None:
+        """Lista os arquivos disponíveis na rede e permite baixar um deles."""
         files = self.commands.send_ls()
         exit = False
         while not exit:
@@ -100,12 +112,14 @@ class MenuService:
                 break
 
     def _st(self) -> None:
+        """Exibe as estatísticas de transferências realizadas."""
         stats_list = self.commands.run_st()
         print("Tam. chunk | N peers | Tam. arquivo | N | Tempo [s] | Desvio")
         for stat in stats_list:
             print(f"{stat.chunk_size:^11}|{stat.num_peers:^9}|{stat.file_size:^14}|{stat.num_chunks:^3}|{stat.total_time:^11.5f}| {stat.deviation:^7.5f}")
 
     def _change_chunk_size(self) -> None:
+        """Altera o tamanho do chunk utilizado nas transferências."""
         try:
             print("Digite novo tamanho de chunk:")
             new_value = input("> ")
@@ -120,6 +134,7 @@ class MenuService:
             print(f"        Tamanho de chunk alterado: {new_value}")
 
     def _exit(self) -> bool:
+        """Envia a mensagem BYE para os peers conhecidos e encerra o menu."""
         try:
             self.commands.send_bye()
         except Exception as error:

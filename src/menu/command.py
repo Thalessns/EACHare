@@ -1,5 +1,5 @@
+"""Módulo responsável pelos comandos do Peer."""
 import threading
-import ast
 import base64
 
 from concurrent.futures import ThreadPoolExecutor
@@ -14,14 +14,30 @@ from src.stats.service import manage_stats
 
 
 class Command:
+    """Classe responsável pelos comandos do Peer."""
 
     def __init__(self, peer: PeerService) -> None:
+        """Inicializa a classe Command com o PeerService.
+        
+        Args:
+            peer (PeerService): Instância do PeerService.
+        """
         self.peer = peer
 
     def list_peers(self) -> List[Peer]:
+        """Lista os peers conhecidos pelo Peer.
+        
+        Returns:
+            List[Peer]: Lista de peers conhecidos.
+        """
         return self.peer.known_peers
         
     def send_hello(self, target: Peer) -> None:
+        """Envia uma mensagem de HELLO para o peer alvo.
+
+        Args:
+            target (Peer): Peer alvo para enviar a mensagem.
+        """
         message = Message.create(
                 origin=self.peer.address,
                 clock=self.peer.clock + 1,
@@ -31,6 +47,7 @@ class Command:
         self.peer.send_message(target, message)
 
     def send_get_peers(self) -> None:
+        """Envia uma mensagem de GET_PEERS para todos os peers conhecidos."""
         responses = self._get_peers_responses(
             peers_list=self.list_peers(),
             message_type=MessageType.GET_PEERS
@@ -45,11 +62,17 @@ class Command:
                 )  
 
     def list_local_files(self) -> None:
+        """Lista os arquivos compartilhados localmente pelo Peer."""
         print(Constant.LIST_FILES)
         for file in self.peer.list_files_stats():
             print(f" - {file.name}")
 
     def send_ls(self) -> Union[List[Dict], List]:
+        """Envia uma mensagem de LS para todos os peers online.]
+        
+        Returns:
+            Union[List[Dict], List]: Lista de arquivos compartilhados na rede.
+        """
         online_peers = []
         for peer in self.list_peers():
             if peer.status == "ONLINE":
@@ -73,6 +96,15 @@ class Command:
         return [files_mapping[key] for key in files_mapping.keys()]
     
     def send_dl(self, owners: Union[str, List[str]], file: SharedFile) -> Dict[str, any]:
+        """Envia uma mensagem de DL para os peers donos do arquivo.
+
+        Args:
+            owners (Union[str, List[str]]): Endereço(s) do(s) peer(s) dono(s) do arquivo.
+            file (SharedFile): Arquivo a ser baixado.
+
+        Returns:
+            Dict[str, any]: Dicionário com o conteúdo dos chunks baixados.
+        """
         peers = [self.peer.get_peer(owner) for owner in owners]
 
         chunk_size = int(self.peer.chunk)
@@ -96,6 +128,13 @@ class Command:
             start_chunk: int, 
             end_chunk: int
         ):
+            """Função para baixar os chunks de um peer específico.
+            
+            Args:
+                peer (Peer): Peer do qual os chunks serão baixados.
+                start_chunk (int): Índice do primeiro chunk a ser baixado.
+                end_chunk (int): Índice do último chunk a ser baixado.
+            """
             for chunk_index in range(start_chunk, end_chunk):
                 chunk_start_time = time()
                 args = f"{file.name} {chunk_size} {chunk_index}"
@@ -173,6 +212,12 @@ class Command:
         return chunks_content
 
     def save_shared_file(self, file_name: str, file_content: bytes) -> None:
+        """Salva o arquivo compartilhado no sistema de arquivos local.
+        
+        Args:
+            file_name (str): Nome do arquivo a ser salvo.
+            file_content (bytes): Conteúdo do arquivo em bytes.
+        """
         status = self.peer.save_shared_file(
             file_name=file_name,
             file_content=file_content
@@ -181,12 +226,23 @@ class Command:
             print(f"Download do arquivo {file_name} finalizado.")
 
     def run_st(self) -> list:
+        """Retorna as estatísticas do Peer.
+
+        Returns:
+            list: Lista com as estatísticas do Peer.
+        """
         return manage_stats.get_data()
 
     def change_chunk_size(self, new_value: int) -> None:
+        """Altera o tamanho do chunk utilizado pelo Peer.
+        
+        Args:
+            new_value (int): Novo tamanho do chunk em bytes.
+        """
         self.peer.change_chunk_size(new_value)
 
     def send_bye(self) -> None:
+        """Envia uma mensagem de BYE para todos os peers online e encerra o servidor."""
         online_peers = []
         for peer in self.list_peers():
             if peer.status == "ONLINE":
@@ -206,6 +262,12 @@ class Command:
             target: Peer, 
             message: MessageData
         ) -> Union[str, None]:
+        """Envia uma mensagem para o peer alvo.
+        
+        Args:
+            target (Peer): Peer alvo para enviar a mensagem.
+            message (MessageData): Mensagem a ser enviada.
+        """
         return self.peer.send_message(target, message)
 
     def _get_peers_responses(
@@ -215,6 +277,18 @@ class Command:
             args: str = "",
             response_data_separation: str = "breaklines"
         ) -> Union[List[Dict], List]:
+        """Envia uma mensagem para todos os peers da lista e retorna as respostas.
+
+        Args:
+            peers_list (List[Peer]): Lista de peers para enviar a mensagem.
+            message_type (MessageType): Tipo da mensagem a ser enviada.
+            args (str, optional): Argumentos da mensagem. Defaults to "".
+            response_data_separation (str, optional): Método de separação dos dados na resposta. 
+                Pode ser "breaklines" ou "blankspace". Defaults to "breaklines".
+        
+        Returns:
+            Union[List[Dict], List]: Lista de dicionários com o conteúdo das respostas.
+        """
         responses_content = []
         for peer in peers_list:
             message = Message.create(
@@ -240,6 +314,11 @@ class Command:
         return responses
     
     def _prepare_get_peers_response_args(self, args: List[str]) -> List[Dict]: 
+        """Prepara os argumentos da resposta do comando GET_PEERS.
+        
+        Args:
+            args (List[str]): Lista de argumentos da resposta.
+        """
         result = []
         for arg in args:
             splited_arg = arg.split(":")
@@ -254,6 +333,11 @@ class Command:
         return result
 
     def _prepare_ls_response_args(self, args) -> Union[List[SharedFile], List]:
+        """Prepara os argumentos da resposta do comando LS.
+
+        Args:
+            args (List[str]): Lista de argumentos da resposta.
+        """
         result = []
         for arg in args:
             if arg == "":
@@ -268,6 +352,16 @@ class Command:
         return result
 
     def _get_response_data(self, response: str, method: str) -> Dict[str, any]:
+        """Extrai os dados da resposta recebida.
+
+        Args:
+            response (str): Resposta recebida.
+            method (str): Método de separação dos dados na resposta. 
+                Pode ser "breaklines" ou "blankspace".
+        
+        Returns:
+            Dict[str, any]: Dicionário com os dados extraídos da resposta.
+        """
         splitted_response = response.split(" ")
         response_dict = {
             "sender": splitted_response[0],

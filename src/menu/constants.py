@@ -1,6 +1,14 @@
+"""Constantes para o menu do Peer."""
 
 class Constant:
-
+    """Classe para armazenar as constantes do menu do Peer.
+    
+    Args:
+        MAIN_MENU (str): Menu principal do peer.
+        LIST_PEERS (str): Menu para listar peers.
+        LIST_FILES (str): Menu para listar arquivos locais.
+        LIST_FILES_LS (str): Menu para listar arquivos encontrados na rede.
+    """
     MAIN_MENU="""
 Escolha um comando:
         [1] Listar peers

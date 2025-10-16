@@ -1,3 +1,0 @@
-export PYTHONPATH="./"
-
-python3 src/main.py "$1" $2 "$3"
